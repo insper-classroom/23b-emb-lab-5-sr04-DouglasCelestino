@@ -41,7 +41,7 @@ extern void xPortSysTickHandler(void);
 void but_callback(void);
 void echo_callback(void);
 static void BUT_init(void);
-static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource)
+static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource);
 static void configure_console(void);
 
 
@@ -86,7 +86,7 @@ void but_callback(void) {
 
 void echo_callback(void){
 	if(pio_get(ECHO_PIO, PIO_INPUT, ECHO_PIO_IDX_MASK) == 1){
-		RTT_init(82000, 8200, 0);
+		RTT_init(8200, 8200, 0);
 	}
 	else{
 		uint32_t ticks;
@@ -104,8 +104,10 @@ static void task_oled(void *pvParameters) {
   gfx_mono_draw_string("Exemplo RTOS", 0, 0, &sysfont);
   gfx_mono_draw_string("oii", 0, 20, &sysfont);
 
-  uint32_t time;
-  uint32_t distance;
+  double time;
+  double distance;
+  uint32_t ticks;
+
 
 	for (;;)  {
 		if (xSemaphoreTake(xSemaphore, ( TickType_t ) 500) == pdTRUE) {
@@ -115,9 +117,9 @@ static void task_oled(void *pvParameters) {
 		}
 
 		if (xQueueReceive(xQueue, &(ticks), ( TickType_t ) 500) == pdTRUE) {
-			time = (double) ticks / 82000;
+			time = (double) ticks / 8200;
 			distance = time * v_som / 2;
-			printf("Distancia: %d cm\n", distance);
+			printf("Distancia: %ld m\n", distance);
 		}
 	}
 }
@@ -144,41 +146,45 @@ static void configure_console(void) {
 }
 
 static void BUT_init(void) {
+	pmc_enable_periph_clk(BUT_PIO_ID);
+	/* conf bot�o como entrada */
+	pio_configure(BUT_PIO, PIO_INPUT, BUT_PIO_PIN_MASK, PIO_PULLUP | PIO_DEBOUNCE);
+	pio_set_debounce_filter(BUT_PIO, BUT_PIO_PIN_MASK, 60);
+	
+	pio_handler_set(BUT_PIO, BUT_PIO_ID, BUT_PIO_PIN_MASK, PIO_IT_FALL_EDGE , but_callback);
+
+	
+	pio_enable_interrupt(BUT_PIO, BUT_PIO_PIN_MASK);
+  	pio_get_interrupt_status(BUT_PIO);
+
 	/* configura prioridae */
 	NVIC_EnableIRQ(BUT_PIO_ID);
 	NVIC_SetPriority(BUT_PIO_ID, 4);
 
-	/* conf bot�o como entrada */
-	pio_configure(BUT_PIO, PIO_INPUT, BUT_PIO_PIN_MASK, PIO_PULLUP | PIO_DEBOUNCE);
-	pio_set_debounce_filter(BUT_PIO, BUT_PIO_PIN_MASK, 60);
-	pio_enable_interrupt(BUT_PIO, BUT_PIO_PIN_MASK);
-	pio_handler_set(BUT_PIO, BUT_PIO_ID, BUT_PIO_PIN_MASK, PIO_IT_FALL_EDGE , but_callback);
-	
+}
 
-	// Ativa interrupção e limpa primeira IRQ gerada na ativacao
-	pio_enable_interrupt(ECHO_PIO, ECHO_PIO_IDX_MASK);
-	pio_enable_interrupt(TRIGGER_PIO, TRIGGER_PIO_IDX_MASK);
+static void ECHO_init(void) {
+
+	pmc_enable_periph_clk(ECHO_PIO_ID);
 
 	// configure callback
 	pio_configure(ECHO_PIO, PIO_INPUT, ECHO_PIO_IDX_MASK, PIO_DEFAULT);
-	pio_configure(TRIGGER_PIO, PIO_OUTPUT_0, TRIGGER_PIO_IDX_MASK, PIO_DEFAULT, PIO_PULLUP);
-
-	// Configura interrupção no pino referente ao botao e associa
-	// função de callback caso uma interrupção for gerada
-	// a função de callback é a: echo_callback()
 
 	// debounce server para retirar o ruido do botão e evitar que o mesmo seja pressionado varias vezes
 	pio_handler_set(ECHO_PIO, ECHO_PIO_ID, ECHO_PIO_IDX_MASK, PIO_IT_EDGE, echo_callback);
-	pio_set_debounce_filter(ECHO_PIO, ECHO_PIO_IDX_MASK, 60);
 
-	// pio_handler_set(TRIGGER_PIO, TRIGGER_PIO_ID, TRIGGER_PIO_IDX_MASK, PIO_IT_RISE_EDGE, trigger_callback);
-	// pio_set_debounce_filter(TRIGGER_PIO, TRIGGER_PIO_IDX_MASK, 60);
+	// Ativa interrupção e limpa primeira IRQ gerada na ativacao
+	pio_enable_interrupt(ECHO_PIO, ECHO_PIO_IDX_MASK);
 
 	pio_get_interrupt_status(ECHO_PIO);
-	pio_get_interrupt_status(TRIGGER_PIO); // verificar se é necessário
-
+	
 	NVIC_EnableIRQ(ECHO_PIO_ID);
 	NVIC_SetPriority(ECHO_PIO_ID, 4);
+}
+
+static void TRIGGER_init(void) {
+	pmc_enable_periph_clk(TRIGGER_PIO_ID);
+	pio_set_output(TRIGGER_PIO, TRIGGER_PIO_IDX_MASK, 0, 0, 0);
 }
 
 /** 
@@ -200,10 +206,10 @@ static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSou
   rtt_init(RTT, pllPreScale);
   
   if (rttIRQSource & RTT_MR_ALMIEN) {
-    uint32_t ul_previous_time;
-    ul_previous_time = rtt_read_timer_value(RTT);
-    while (ul_previous_time == rtt_read_timer_value(RTT));
-    rtt_write_alarm_time(RTT, IrqNPulses+ul_previous_time);
+	uint32_t ul_previous_time;
+  	ul_previous_time = rtt_read_timer_value(RTT);
+  	while (ul_previous_time == rtt_read_timer_value(RTT));
+  	rtt_write_alarm_time(RTT, IrqNPulses+ul_previous_time);
   }
 
   /* config NVIC */
@@ -214,9 +220,9 @@ static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSou
 
   /* Enable RTT interrupt */
   if (rttIRQSource & (RTT_MR_RTTINCIEN | RTT_MR_ALMIEN))
-    rtt_enable_interrupt(RTT, rttIRQSource);
+	rtt_enable_interrupt(RTT, rttIRQSource);
   else
-    rtt_disable_interrupt(RTT, RTT_MR_RTTINCIEN | RTT_MR_ALMIEN);
+	rtt_disable_interrupt(RTT, RTT_MR_RTTINCIEN | RTT_MR_ALMIEN);
 }
 
 
@@ -231,8 +237,11 @@ int main(void) {
 	/* Initialize the button */
 	BUT_init();
 
-	/* Initialize RTT */
-	RTT_init(82000, 8200, 0);
+	/* Initialize the echo */
+	ECHO_init();
+
+	/* Initialize the trigger */
+	TRIGGER_init();
 
 	/* Initialize the console uart */
 	configure_console();
@@ -247,7 +256,7 @@ int main(void) {
 	xSemaphore = xSemaphoreCreateBinary();
 
 	/* Create queue */
-	xQueue = xQueueCreate(32, sizeof(char));
+	xQueue = xQueueCreate(32, sizeof(uint32_t));
 
 	if (xQueue == NULL) {
 		printf("Failed to create queue\r\n");

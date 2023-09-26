@@ -2,6 +2,8 @@
 # Automatically-generated file. Do not edit or delete the file
 ################################################################################
 
+src\ASF\sam\drivers\rtt\rtt.c
+
 src\ASF\sam\drivers\spi\spi.c
 
 src\oled\gfx_mono_framebuffer.c

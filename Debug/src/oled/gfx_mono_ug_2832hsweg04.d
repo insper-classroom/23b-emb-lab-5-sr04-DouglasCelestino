@@ -182,7 +182,7 @@ src/oled/gfx_mono_ug_2832hsweg04.d src/oled/gfx_mono_ug_2832hsweg04.o: \
  ../src/ASF/common/services/ioport/ioport.h \
  ../src/ASF/common/services/ioport/sam/ioport_pio.h \
  ../src/ASF/sam/drivers/mpu/mpu.h ../src/ASF/sam/drivers/pmc/sleep.h \
- ../src/ASF/sam/utils/fpu/fpu.h \
+ ../src/ASF/sam/drivers/rtt/rtt.h ../src/ASF/sam/utils/fpu/fpu.h \
  ../src/ASF/sam/boards/same70_xplained/led.h \
  ../src/ASF/sam/drivers/spi/spi.h \
  ../src/ASF/common/utils/stdio/stdio_serial/stdio_serial.h \
@@ -569,6 +569,8 @@ c:\program\ files\ (x86)\atmel\studio\7.0\toolchain\arm\arm-gnu-toolchain\arm-no
 ../src/ASF/sam/drivers/mpu/mpu.h:
 
 ../src/ASF/sam/drivers/pmc/sleep.h:
+
+../src/ASF/sam/drivers/rtt/rtt.h:
 
 ../src/ASF/sam/utils/fpu/fpu.h:
 
