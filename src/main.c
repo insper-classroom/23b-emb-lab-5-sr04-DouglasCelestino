@@ -140,8 +140,7 @@ static void task_oled(void *pvParameters) {
 
 	float distance;
 	uint32_t ticks;
-	
-	char str[32];
+
 
 	for (;;)  {
 		if (xSemaphoreTake(xSemaphore, ( TickType_t ) 500) == pdTRUE) {
