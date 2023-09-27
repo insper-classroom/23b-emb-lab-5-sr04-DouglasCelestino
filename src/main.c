@@ -101,7 +101,6 @@ void echo_callback(void){
 static void task_oled(void *pvParameters) {
 	gfx_mono_ssd1306_init();
 
-	float time;
 	float distance;
 	uint32_t ticks;
 	
