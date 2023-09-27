@@ -87,6 +87,7 @@ extern void vApplicationMallocFailedHook(void) {
 
 SemaphoreHandle_t xSemaphore = NULL;
 SemaphoreHandle_t xSemaphoreAlert = NULL;
+SemaphoreHandle_t xSemaphoreNotAlert = NULL;
 
 /************************************************************************/
 /* Queue                                                              */
@@ -119,6 +120,11 @@ void alarm_callback(void){
 	xSemaphoreGiveFromISR(xSemaphoreAlert, &xHigherPriorityTaskWoken);
 }
 
+void off_alarm_callback(void){	
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(xSemaphoreNotAlert, &xHigherPriorityTaskWoken);
+}
+
 /************************************************************************/
 /* TASKS                                                                */
 /************************************************************************/
@@ -147,8 +153,8 @@ static void task_oled(void *pvParameters) {
 
 				if(distance > 200){
 					xSemaphoreGive(xSemaphoreAlert);
-				} else{
-					clear_buzzer(); // Desligue o alarme
+				}else{
+					xSemaphoreGive(xSemaphoreNotAlert);
 				}
 			}
 		}
@@ -156,9 +162,19 @@ static void task_oled(void *pvParameters) {
 }
 
 static void task_alarm(void *pvParameters){
-	if(xSemaphoreTake(xSemaphoreAlert, ( TickType_t ) 500) == pdTRUE){
-		tone(1000, 1000);
+	char ativo=0;
+	for(;;){
+			if(xSemaphoreTake(xSemaphoreAlert, ( TickType_t ) 500) == pdTRUE){
+				ativo = 1;
+			}
+			while(ativo){
+				tone(1000, 1000);
+				if(xSemaphoreTake(xSemaphoreNotAlert, ( TickType_t ) 500) == pdTRUE){
+					ativo = 0;
+				}
+			}
 	}
+	
 }
 
 /************************************************************************/
@@ -304,6 +320,8 @@ int main(void) {
 
 	xSemaphoreAlert = xSemaphoreCreateBinary();
 
+	xSemaphoreNotAlert = xSemaphoreCreateBinary();
+
 	/* Create queue */
 	xQueue = xQueueCreate(32, sizeof(uint32_t));
 
@@ -319,6 +337,9 @@ int main(void) {
 		printf("Failed to create semaphore\r\n");
 	}
 
+	if (xSemaphoreNotAlert == NULL) {
+		printf("Failed to create semaphore\r\n");
+	}
 
 	/* Initialize the button */
 	BUT_init();
