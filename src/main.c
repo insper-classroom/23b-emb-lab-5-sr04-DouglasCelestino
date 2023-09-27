@@ -23,11 +23,21 @@
 #define TRIGGER_PIO_IDX 30
 #define TRIGGER_PIO_IDX_MASK (1 << TRIGGER_PIO_IDX)
 
+// BUZZER
+#define BUZZER_PIO PIOD
+#define BUZZER_PIO_ID ID_PIOD
+#define BUZZER_PIO_IDX 11
+#define BUZZER_PIO_IDX_MASK (1u << BUZZER_PIO_IDX)
+
 
 
 /** RTOS  */
 #define TASK_OLED_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
 #define TASK_OLED_STACK_PRIORITY            (tskIDLE_PRIORITY)
+
+#define TASK_ALARM_STACK_SIZE                (1024*6/sizeof(portSTACK_TYPE))
+#define TASK_ALARM_STACK_PRIORITY            (tskIDLE_PRIORITY)
+
 
 extern void vApplicationStackOverflowHook(xTaskHandle *pxTask,  signed char *pcTaskName);
 extern void vApplicationIdleHook(void);
@@ -39,9 +49,18 @@ extern void xPortSysTickHandler(void);
 /** prototypes */
 void but_callback(void);
 void echo_callback(void);
+void set_buzzer();
+void clear_buzzer();
+void tone(int freq, int tempo);
 static void BUT_init(void);
 static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource);
 static void configure_console(void);
+static void ECHO_init(void);
+static void TRIGGER_init(void);
+static void BUZZER_init(void);
+static void task_oled(void *pvParameters);
+static void task_alarm(void *pvParameters);
+
 
 
 /************************************************************************/
@@ -67,6 +86,7 @@ extern void vApplicationMallocFailedHook(void) {
 /************************************************************************/
 
 SemaphoreHandle_t xSemaphore = NULL;
+SemaphoreHandle_t xSemaphoreAlert = NULL;
 
 /************************************************************************/
 /* Queue                                                              */
@@ -94,6 +114,11 @@ void echo_callback(void){
 	}
 }
 
+void alarm_callback(void){	
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(xSemaphoreAlert, &xHigherPriorityTaskWoken);
+}
+
 /************************************************************************/
 /* TASKS                                                                */
 /************************************************************************/
@@ -119,8 +144,20 @@ static void task_oled(void *pvParameters) {
 				sprintf(str, "%6.3f", distance);
 				gfx_mono_draw_string(str, 25, 12, &sysfont);
 				gfx_mono_draw_string(" cm  ", 65, 12, &sysfont);
+
+				if(distance > 200){
+					xSemaphoreGive(xSemaphoreAlert);
+				} else{
+					clear_buzzer(); // Desligue o alarme
+				}
 			}
 		}
+	}
+}
+
+static void task_alarm(void *pvParameters){
+	if(xSemaphoreTake(xSemaphoreAlert, ( TickType_t ) 500) == pdTRUE){
+		tone(1000, 1000);
 	}
 }
 
@@ -185,6 +222,36 @@ static void TRIGGER_init(void) {
 	pio_set_output(TRIGGER_PIO, TRIGGER_PIO_IDX_MASK, 0, 0, 0);
 }
 
+static void BUZZER_init(void){
+	pmc_enable_periph_clk(BUZZER_PIO_ID);
+	pio_set_output(BUZZER_PIO, BUZZER_PIO_IDX_MASK, 0, 0, 0);
+}
+
+void set_buzzer() {
+	pio_set(BUZZER_PIO, BUZZER_PIO_IDX_MASK);
+}
+
+void clear_buzzer() {
+	pio_clear(BUZZER_PIO, BUZZER_PIO_IDX_MASK);
+}
+
+void tone(int freq, int tempo) {
+	int i;
+	if (freq == 0) {
+		delay_ms(tempo);
+		return;
+	}
+	int fim = freq * tempo / 1000;
+	int periodo = 1000000 / freq;
+	for (i = 0; i < fim; i++) {
+		
+		set_buzzer();
+		delay_us(periodo / 2);
+		clear_buzzer();
+		delay_us(periodo / 2);
+	}
+}
+
 /**
 * Configura RTT
 *
@@ -235,6 +302,8 @@ int main(void) {
 	/* Create semaphore */
 	xSemaphore = xSemaphoreCreateBinary();
 
+	xSemaphoreAlert = xSemaphoreCreateBinary();
+
 	/* Create queue */
 	xQueue = xQueueCreate(32, sizeof(uint32_t));
 
@@ -246,6 +315,11 @@ int main(void) {
 		printf("Failed to create semaphore\r\n");
 	}
 
+	if (xSemaphoreAlert == NULL) {
+		printf("Failed to create semaphore\r\n");
+	}
+
+
 	/* Initialize the button */
 	BUT_init();
 
@@ -255,12 +329,20 @@ int main(void) {
 	/* Initialize the trigger */
 	TRIGGER_init();
 
+	/* Initialize the buzzer */
+	BUZZER_init();
+
 	/* Initialize the console uart */
 	configure_console();
 
 	/* Create task to control oled */
 	if (xTaskCreate(task_oled, "oled", TASK_OLED_STACK_SIZE, NULL, TASK_OLED_STACK_PRIORITY, NULL) != pdPASS) {
 		printf("Failed to create oled task\r\n");
+	}
+
+	/* Create task to control alarm */
+	if (xTaskCreate(task_alarm, "alarm", TASK_ALARM_STACK_SIZE, NULL, TASK_ALARM_STACK_PRIORITY, NULL) != pdPASS) {
+		printf("Failed to create alarm task\r\n");
 	}
 
 	/* Start the scheduler. */
