@@ -29,6 +29,11 @@
 #define BUZZER_PIO_IDX 11
 #define BUZZER_PIO_IDX_MASK (1u << BUZZER_PIO_IDX)
 
+#define MAX_DISTANCE 200.0 // cm
+#define CHART_WIDTH  50   // Largura do gráfico em pixels
+#define CHART_HEIGHT  20   // Altura do gráfico em pixels
+
+
 
 
 /** RTOS  */
@@ -52,6 +57,7 @@ void echo_callback(void);
 void set_buzzer();
 void clear_buzzer();
 void tone(int freq, int tempo);
+void draw_progress_bar(float distance);
 static void BUT_init(void);
 static void RTT_init(float freqPrescale, uint32_t IrqNPulses, uint32_t rttIRQSource);
 static void configure_console(void);
@@ -146,10 +152,14 @@ static void task_oled(void *pvParameters) {
 			if (xQueueReceive(xQueue, &ticks, ( TickType_t ) 500) == pdTRUE) {
 				distance = (((float) ticks) * 340.0) / (2.0 * 8200.0);
 				distance = distance * 100;
+				if(distance > 400){
+						distance = 400;
+					}
 				printf("Distancia: %f cm\n", distance);
-				sprintf(str, "%6.3f", distance);
-				gfx_mono_draw_string(str, 25, 12, &sysfont);
-				gfx_mono_draw_string(" cm  ", 65, 12, &sysfont);
+				// sprintf(str, "%6.3f", distance);
+				// gfx_mono_draw_string(str, 25, 12, &sysfont);
+				// gfx_mono_draw_string(" cm  ", 65, 12, &sysfont);
+				draw_progress_bar(distance);
 
 				if(distance > 200){
 					xSemaphoreGive(xSemaphoreAlert);
@@ -249,6 +259,13 @@ void set_buzzer() {
 
 void clear_buzzer() {
 	pio_clear(BUZZER_PIO, BUZZER_PIO_IDX_MASK);
+}
+
+// Função para desenhar a barra de progresso no OLED
+void draw_progress_bar(float distance) {
+    int bar_length = (int)((MAX_DISTANCE - distance) / MAX_DISTANCE * CHART_WIDTH);
+    gfx_mono_draw_filled_rect(0, 0, GFX_MONO_LCD_WIDTH, GFX_MONO_LCD_HEIGHT, GFX_PIXEL_CLR);  // Limpa a área
+    gfx_mono_draw_filled_rect(0, 0, bar_length, CHART_HEIGHT, GFX_PIXEL_SET);  // Desenha a barra
 }
 
 void tone(int freq, int tempo) {
